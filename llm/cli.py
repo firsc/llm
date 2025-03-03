@@ -24,6 +24,9 @@ import pydantic
 import sqlite_utils
 import yaml
 from click_default_group import DefaultGroup
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
 from sqlite_utils.utils import Format, rows_from_file
 
 from llm import (
@@ -95,6 +98,8 @@ warnings.simplefilter("ignore", ResourceWarning)
 
 DEFAULT_TEMPLATE = "prompt: "
 
+console = Console()
+
 
 class FragmentNotFound(Exception):
     pass
@@ -143,6 +148,7 @@ def _run_chat(
     transform_prompt=None,
     after_response=None,
     show_reasoning=True,
+    rich=False,
 ):
     """Run the terminal chat loop shared by managed and transient models."""
     click.echo(f"Chatting with {model_label}")
@@ -210,13 +216,17 @@ def _run_chat(
             prompt = transform_prompt(prompt)
 
         response = prompt_callback(prompt, fragments, attachments)
-        display_stream_events(
-            response.stream_events(),
-            show_reasoning=show_reasoning,
-        )
+        if rich:
+            print_response(response=response, stream=True, rich=True)
+        else:
+            display_stream_events(
+                response.stream_events(),
+                show_reasoning=show_reasoning,
+            )
         if after_response is not None:
             after_response(response)
-        print()
+        if not rich:
+            print()
 
 
 def validate_fragment_alias(ctx, param, value):
@@ -666,6 +676,9 @@ def cli():
 )
 @click.option("--key", help="API key to use")
 @click.option("--save", help="Save prompt with this template name")
+@click.option(
+    "--rich", "-r", is_flag=True, help="Render output with rich (requires rich)"
+)
 @click.option("async_", "--async", is_flag=True, help="Run prompt asynchronously")
 @click.option("-u", "--usage", is_flag=True, help="Show token usage")
 @click.option("-x", "--extract", is_flag=True, help="Extract first fenced code block")
@@ -711,6 +724,7 @@ def prompt(
     conversation_id,
     key,
     save,
+    rich,
     async_,
     usage,
     extract,
@@ -1124,7 +1138,9 @@ def prompt(
                 system_fragments=resolved_system_fragments,
                 **kwargs,
             )
-            if should_stream:
+            if rich:
+                print_response(response=response, stream=should_stream, rich=True)
+            elif should_stream:
                 display_stream_events(
                     response.stream_events(),
                     show_reasoning=not hide_reasoning,
@@ -1244,6 +1260,9 @@ def prompt(
 @click.option("-R", "--hide-reasoning", is_flag=True, help="Hide reasoning output")
 @click.option("--key", help="API key to use")
 @tool_options
+@click.option(
+    "--rich", "-r", is_flag=True, help="Render output with rich (requires rich)"
+)
 def chat(
     system,
     model_id,
@@ -1263,6 +1282,7 @@ def chat(
     tools_debug,
     tools_approve,
     chain_limit,
+    rich,
 ):
     """
     Hold an ongoing chat with a model.
@@ -1406,6 +1426,7 @@ def chat(
         transform_prompt=transform_chat_prompt,
         after_response=lambda response: response.log_to_db(db),
         show_reasoning=not hide_reasoning,
+        rich=rich,
     )
 
 
@@ -4388,3 +4409,26 @@ def _get_conversation_tools(conversation, tools):
         # toolbox specs were read from turn_tools instead of rebuilt
         # responses.
         return list(conversation.loaded_tools)
+
+
+def print_response(response, stream=True, rich=False):
+    if stream:
+        if rich:
+            md = ""
+            with Live(Markdown(""), console=console) as live:
+                for chunk in response:
+                    md += chunk
+                    try:
+                        live.update(Markdown(md))
+                    except IndexError:
+                        pass
+        else:
+            for chunk in response:
+                console.print(chunk, end="")
+                sys.stdout.flush()
+            console.print()
+    else:
+        if rich:
+            console.print(Markdown(response.text()))
+        else:
+            console.print(response.text())
