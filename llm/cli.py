@@ -78,11 +78,15 @@ import textwrap
 from typing import cast, Dict, Optional, Iterable, List, Union, Tuple, Type, Any
 import warnings
 import yaml
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
 
 warnings.simplefilter("ignore", ResourceWarning)
 
 DEFAULT_TEMPLATE = "prompt: "
 
+console = Console()
 
 class FragmentNotFound(Exception):
     pass
@@ -461,6 +465,9 @@ def cli():
 )
 @click.option("--key", help="API key to use")
 @click.option("--save", help="Save prompt with this template name")
+@click.option(
+    "--rich", "-r", is_flag=True, help="Render output with rich (requires rich)"
+)
 @click.option("async_", "--async", is_flag=True, help="Run prompt asynchronously")
 @click.option("-u", "--usage", is_flag=True, help="Show token usage")
 @click.option("-x", "--extract", is_flag=True, help="Extract first fenced code block")
@@ -502,6 +509,7 @@ def prompt(
     usage,
     extract,
     extract_last,
+    rich,
 ):
     """
     Execute a prompt
@@ -877,16 +885,18 @@ def prompt(
                 system_fragments=resolved_system_fragments,
                 **kwargs,
             )
-            if should_stream:
-                for chunk in response:
-                    print(chunk, end="")
-                    sys.stdout.flush()
-                print("")
-            else:
-                text = response.text()
-                if extract or extract_last:
-                    text = extract_fenced_code_block(text, last=extract_last) or text
-                print(text)
+            # if should_stream:
+            #     for chunk in response:
+            #         print(chunk, end="")
+            #         sys.stdout.flush()
+            #     print("")
+            # else:
+            #     text = response.text()
+            #     if extract or extract_last:
+            #         text = extract_fenced_code_block(text, last=extract_last) or text
+            #     print(text)
+            print_response(response=response, stream=should_stream, rich=rich)
+
     # List of exceptions that should never be raised in pytest:
     except (ValueError, NotImplementedError) as ex:
         raise click.ClickException(str(ex))
@@ -1014,6 +1024,8 @@ def prompt(
     default=5,
     help="How many chained tool responses to allow, default 5, set 0 for unlimited",
 )
+@click.option("--rich", "-r", is_flag=True, default=False,
+              help="Render output with rich (requires rich)")
 def chat(
     system,
     model_id,
@@ -1032,6 +1044,7 @@ def chat(
     tools_debug,
     tools_approve,
     chain_limit,
+    rich,
 ):
     """
     Hold an ongoing chat with a model.
@@ -1231,11 +1244,12 @@ def chat(
         # System prompt and system fragments only sent for the first message
         system = None
         argument_system_fragments = []
-        for chunk in response:
-            print(chunk, end="")
-            sys.stdout.flush()
+        # for chunk in response:
+        #     print(chunk, end="")
+        #     sys.stdout.flush()
+        print_response(response=response, stream=True, rich=rich)
         response.log_to_db(db)
-        print("")
+        # print("")
 
 
 def load_conversation(
@@ -4040,7 +4054,6 @@ def _gather_tools(
             tools.append(instantiate_from_spec(registered_classes, tool_spec))
     return tools
 
-
 def _get_conversation_tools(conversation, tools):
     if conversation and not tools and conversation.responses:
         # Copy plugin tools from first response in conversation
@@ -4048,3 +4061,26 @@ def _get_conversation_tools(conversation, tools):
         if initial_tools:
             # Only tools from plugins:
             return [tool.name for tool in initial_tools if tool.plugin]
+
+def print_response(response, stream=True, rich=False):
+    if stream:
+        if rich:
+            md = ""
+            with Live(Markdown(""), console=console) as live:
+                for chunk in response:
+                    md += chunk
+                    try:
+                        live.update(Markdown(md))
+                    except IndexError:
+                        pass
+        else:
+            for chunk in response:
+                console.print(chunk, end="")
+                sys.stdout.flush()
+            console.print()
+    else:
+        if rich:
+            console.print(Markdown(response.text()))
+        else:
+            console.print(response.text())
+
