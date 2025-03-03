@@ -72,11 +72,15 @@ import textwrap
 from typing import cast, Optional, Iterable, List, Union, Tuple, Any
 import warnings
 import yaml
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
 
 warnings.simplefilter("ignore", ResourceWarning)
 
 DEFAULT_TEMPLATE = "prompt: "
 
+console = Console()
 
 class FragmentNotFound(Exception):
     pass
@@ -377,6 +381,9 @@ def cli():
 )
 @click.option("--key", help="API key to use")
 @click.option("--save", help="Save prompt with this template name")
+@click.option(
+    "--rich", "-r", is_flag=True, help="Render output with rich (requires rich)"
+)
 @click.option("async_", "--async", is_flag=True, help="Run prompt asynchronously")
 @click.option("-u", "--usage", is_flag=True, help="Show token usage")
 @click.option("-x", "--extract", is_flag=True, help="Extract first fenced code block")
@@ -413,6 +420,7 @@ def prompt(
     usage,
     extract,
     extract_last,
+    rich,
 ):
     """
     Execute a prompt
@@ -743,16 +751,18 @@ def prompt(
                 system_fragments=system_fragments,
                 **kwargs,
             )
-            if should_stream:
-                for chunk in response:
-                    print(chunk, end="")
-                    sys.stdout.flush()
-                print("")
-            else:
-                text = response.text()
-                if extract or extract_last:
-                    text = extract_fenced_code_block(text, last=extract_last) or text
-                print(text)
+            # if should_stream:
+            #     for chunk in response:
+            #         print(chunk, end="")
+            #         sys.stdout.flush()
+            #     print("")
+            # else:
+            #     text = response.text()
+            #     if extract or extract_last:
+            #         text = extract_fenced_code_block(text, last=extract_last) or text
+            #     print(text)
+            print_response(response=response, stream=should_stream, rich=rich)
+
     # List of exceptions that should never be raised in pytest:
     except (ValueError, NotImplementedError) as ex:
         raise click.ClickException(str(ex))
@@ -816,6 +826,8 @@ def prompt(
 )
 @click.option("--no-stream", is_flag=True, help="Do not stream output")
 @click.option("--key", help="API key to use")
+@click.option("--rich", "-r", is_flag=True, default=False,
+              help="Render output with rich (requires rich)")
 def chat(
     system,
     model_id,
@@ -826,6 +838,7 @@ def chat(
     options,
     no_stream,
     key,
+    rich,
 ):
     """
     Hold an ongoing chat with a model.
@@ -941,11 +954,12 @@ def chat(
         response = conversation.prompt(prompt, system=system, **kwargs)
         # System prompt only sent for the first message:
         system = None
-        for chunk in response:
-            print(chunk, end="")
-            sys.stdout.flush()
+        # for chunk in response:
+        #     print(chunk, end="")
+        #     sys.stdout.flush()
+        print_response(response=response, stream=True, rich=rich)
         response.log_to_db(db)
-        print("")
+        # print("")
 
 
 def load_conversation(
@@ -3244,3 +3258,24 @@ def load_template(name: str) -> Template:
         raise LoadTemplateError(f"Invalid template: {name}")
     content = path.read_text()
     return _parse_yaml_template(name, content)
+
+
+def print_response(response, stream=True, rich=False):
+    if stream:
+        if rich:
+            md = ""
+            with Live(Markdown(""), console=console) as live:
+                for chunk in response:
+                    md += chunk
+                    live.update(Markdown(md))
+        else:
+            for chunk in response:
+                console.print(chunk, end="")
+                sys.stdout.flush()
+            console.print()
+    else:
+        if rich:
+            console.print(Markdown(response.text()))
+        else:
+            console.print(response.text())
+
