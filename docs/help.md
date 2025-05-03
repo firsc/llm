@@ -140,6 +140,7 @@ Options:
   --cid, --conversation TEXT      Continue the conversation with the given ID.
   --key TEXT                      API key to use
   --save TEXT                     Save prompt with this template name
+  -r, --rich                      Render output with rich (requires rich)
   --async                         Run prompt asynchronously
   -u, --usage                     Show token usage
   -x, --extract                   Extract first fenced code block
@@ -164,6 +165,7 @@ Options:
   -o, --option <TEXT TEXT>...  key/value options for the model
   --no-stream                  Do not stream output
   --key TEXT                   API key to use
+  -r, --rich                   Render output with rich (requires rich)
   --help                       Show this message and exit.
 ```
 
