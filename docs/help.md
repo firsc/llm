@@ -148,6 +148,7 @@ Options:
   --cid, --conversation TEXT      Continue the conversation with the given ID.
   --key TEXT                      API key to use
   --save TEXT                     Save prompt with this template name
+  -r, --rich                      Render output with rich (requires rich)
   --async                         Run prompt asynchronously
   -u, --usage                     Show token usage
   -x, --extract                   Extract first fenced code block
@@ -183,6 +184,7 @@ Options:
   --ta, --tools-approve         Manually approve every tool execution
   --cl, --chain-limit INTEGER   How many chained tool responses to allow,
                                 default 5, set 0 for unlimited
+  -r, --rich                    Render output with rich (requires rich)
   -h, --help                    Show this message and exit.
 ```
 
